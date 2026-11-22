@@ -1,0 +1,479 @@
+package pers.solid.mishang.uc;
+
+import com.google.common.base.Functions;
+import com.google.common.base.Suppliers;
+import com.google.common.collect.*;
+import com.mojang.datafixers.util.Pair;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.Decoder;
+import com.mojang.serialization.DynamicOps;
+import it.unimi.dsi.fastutil.ints.IntList;
+import net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.Direction;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.tags.TagKey;
+import net.minecraft.util.ARGB;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ColorCollection;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
+import pers.solid.mishang.uc.block.HandrailBlock;
+import pers.solid.mishang.uc.blocks.*;
+import pers.solid.mishang.uc.item.MishangucItems;
+import pers.solid.mishang.uc.text.TextContext;
+import pers.solid.mishang.uc.util.LineColor;
+import pers.solid.mishang.uc.util.LineType;
+import pers.solid.mishang.uc.util.VerticalAlign;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.*;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Stream;
+
+/**
+ * 本类存放一些实用方法。
+ */
+public class MishangUtils {
+  /**
+   * @since 0.2.0 该字段为一个不可变的映射。
+   */
+  public static final @Unmodifiable BiMap<DyeColor, Integer> COLOR_TO_OUTLINE_COLOR = Arrays.stream(DyeColor.values()).collect(ImmutableBiMap.toImmutableBiMap(Functions.identity(), MishangUtils::toSignOutlineColor));
+  private static final Supplier<ImmutableList<Block>> memoizedBlocks = Suppliers.memoize(MishangUtils::blocksInternal);
+  private static final ImmutableSet<Block> WOODS = ImmutableSet.of(Blocks.OAK_WOOD, Blocks.SPRUCE_WOOD, Blocks.BIRCH_WOOD, Blocks.JUNGLE_WOOD, Blocks.ACACIA_WOOD, Blocks.DARK_OAK_WOOD, Blocks.MANGROVE_WOOD, Blocks.CRIMSON_HYPHAE, Blocks.WARPED_HYPHAE, Blocks.CHERRY_WOOD);
+  private static final ImmutableSet<Block> STRIPPED_WOODS = ImmutableSet.of(Blocks.STRIPPED_OAK_WOOD, Blocks.STRIPPED_SPRUCE_WOOD, Blocks.STRIPPED_BIRCH_WOOD, Blocks.STRIPPED_JUNGLE_WOOD, Blocks.STRIPPED_ACACIA_WOOD, Blocks.STRIPPED_DARK_OAK_WOOD, Blocks.STRIPPED_MANGROVE_WOOD, Blocks.STRIPPED_CRIMSON_HYPHAE, Blocks.STRIPPED_WARPED_HYPHAE, Blocks.STRIPPED_CHERRY_WOOD);
+  private static final ImmutableSet<Block> PLANKS = ImmutableSet.of(Blocks.OAK_PLANKS, Blocks.SPRUCE_PLANKS, Blocks.BIRCH_PLANKS, Blocks.JUNGLE_PLANKS, Blocks.ACACIA_PLANKS, Blocks.DARK_OAK_PLANKS, Blocks.MANGROVE_PLANKS, Blocks.WARPED_PLANKS, Blocks.CRIMSON_PLANKS, Blocks.CHERRY_PLANKS, Blocks.BAMBOO_PLANKS);
+  public static final ImmutableList<DyeColor> DYE_COLORS = ImmutableList.of(DyeColor.WHITE, DyeColor.LIGHT_GRAY, DyeColor.GRAY, DyeColor.BLACK, DyeColor.BROWN, DyeColor.RED, DyeColor.ORANGE, DyeColor.YELLOW, DyeColor.LIME, DyeColor.GREEN, DyeColor.CYAN, DyeColor.LIGHT_BLUE, DyeColor.BLUE, DyeColor.PURPLE, DyeColor.MAGENTA, DyeColor.PINK);
+  private static final ImmutableSet<Block> CONCRETES = gameplayColorCollection(Blocks.CONCRETE, ImmutableSet.toImmutableSet());
+  private static final ImmutableSet<Block> TERRACOTTAS = gameplayColorCollection(Blocks.DYED_TERRACOTTA, ImmutableSet.toImmutableSet());
+  private static final ImmutableSet<Block> WOOLS = gameplayColorCollection(Blocks.WOOL, ImmutableSet.toImmutableSet());
+  private static final ImmutableSet<Block> STAINED_GLASSES = gameplayColorCollection(Blocks.STAINED_GLASS, ImmutableSet.toImmutableSet());
+
+  public static <T, A, R> R gameplayColorCollection(ColorCollection<T> colorCollection, Collector<T, A, R> collector) {
+    return DYE_COLORS.stream().map(colorCollection::pick).collect(collector);
+  }
+
+  public static boolean isWooden(@Nullable Block block) {
+    return isWood(block) || isStrippedWood(block) || isPlanks(block);
+  }
+
+  public static boolean isWood(@Nullable Block block) {
+    return WOODS.contains(block);
+  }
+
+  public static boolean isStrippedWood(@Nullable Block block) {
+    return STRIPPED_WOODS.contains(block);
+  }
+
+  public static boolean isPlanks(@Nullable Block block) {
+    return PLANKS.contains(block) || block == ColoredBlocks.COLORED_PLANKS;
+  }
+
+  public static boolean isConcrete(@Nullable Block block) {
+    return CONCRETES.contains(block) || block == ColoredBlocks.COLORED_CONCRETE;
+  }
+
+  public static boolean isTerracotta(@Nullable Block block) {
+    return TERRACOTTAS.contains(block) || block == ColoredBlocks.COLORED_TERRACOTTA;
+  }
+
+  public static boolean isWool(@Nullable Block block) {
+    return WOOLS.contains(block) || block == ColoredBlocks.COLORED_WOOL;
+  }
+
+  public static boolean isStained_glass(@Nullable Block block) {
+    return STAINED_GLASSES.contains(block) || block == ColoredBlocks.COLORED_GLASS;
+  }
+
+  @SuppressWarnings("SuspiciousNameCombination")
+  public static EnumMap<Direction, VoxelShape> createDirectionToShape(
+      double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+    final EnumMap<Direction, VoxelShape> map = new EnumMap<>(Direction.class);
+    map.put(Direction.UP, Block.box(minX, minY, minZ, maxX, maxY, maxZ));
+    map.put(
+        Direction.DOWN,
+        Block.box(16 - maxX, 16 - maxY, 16 - maxZ, 16 - minX, 16 - minY, 16 - minZ));
+    map.put(Direction.EAST, Block.box(minY, minZ, minX, maxY, maxZ, maxX));
+    map.put(
+        Direction.WEST,
+        Block.box(16 - maxY, 16 - maxZ, 16 - maxX, 16 - minY, 16 - minZ, 16 - minX));
+    map.put(Direction.SOUTH, Block.box(minX, minZ, minY, maxX, maxZ, maxY));
+    map.put(
+        Direction.NORTH,
+        Block.box(16 - maxX, 16 - maxZ, 16 - maxY, 16 - minX, 16 - minZ, 16 - minY));
+    return map;
+  }
+
+  public static Map<Direction, VoxelShape> createHorizontalDirectionToShape(
+      double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+    final Map<Direction, VoxelShape> map = new EnumMap<>(Direction.class);
+    map.put(Direction.SOUTH, Block.box(minX, minY, minZ, maxX, maxY, maxZ));
+    map.put(Direction.WEST, Block.box(16 - maxZ, minY, minX, 16 - minZ, maxY, maxX));
+    map.put(
+        Direction.NORTH,
+        Block.box(16 - maxX, minY, 16 - maxZ, 16 - minX, maxY, 16 - minZ));
+    map.put(Direction.EAST, Block.box(minZ, minY, 16 - maxX, maxZ, maxY, 16 - minX));
+    return map;
+  }
+
+  @SafeVarargs
+  public static Map<Direction, VoxelShape> createDirectionToUnionShape(
+      Map<Direction, VoxelShape> firstDirectionToShape,
+      Map<Direction, VoxelShape>... directionToShapes) {
+    final Map<Direction, VoxelShape> map = new EnumMap<>(Direction.class);
+    for (Direction direction : Direction.values()) {
+      final VoxelShape first = firstDirectionToShape.get(direction);
+      if (first != null) {
+        map.put(direction, Shapes.or(
+            first,
+            Arrays.stream(directionToShapes)
+                .filter(Objects::nonNull)
+                .map(directionToShape -> directionToShape.get(direction))
+                .toArray(VoxelShape[]::new)));
+      }
+    }
+    return map;
+  }
+
+  /**
+   * 根据 signColor 返回颜色值。
+   *
+   * @param signColor 对应的告示牌颜色（整数）。
+   * @return 颜色枚举对象，可能为 null。
+   */
+  public static @Nullable DyeColor colorBySignColor(int signColor) {
+    for (DyeColor color : DyeColor.values()) {
+      if (color.getTextColor() == signColor) {
+        return color;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 将颜色转化为告示牌发光的颜色。
+   *
+   * @param color 颜色。
+   * @return 发光后颜色的整数值。
+   */
+  private static int toSignOutlineColor(DyeColor color) {
+    return toSignOutlineColor(color.getTextColor());
+  }
+
+  /**
+   * 将颜色转化为告示牌发光的颜色。若为黑色，则返回白色。
+   *
+   * @param color 颜色的整数值。
+   * @return 发光后颜色的整数值。
+   */
+  public static int toSignOutlineColor(int color) {
+    if ((color & 0xffffff) == 0) {
+      return (color & 0xff000000) | 0xf0ebcc;
+    }
+    int j = (int) ((double) ARGB.red(color) * 0.4);
+    int k = (int) ((double) ARGB.green(color) * 0.4);
+    int l = (int) ((double) ARGB.blue(color) * 0.4);
+    return ARGB.color(ARGB.alpha(color), j, k, l);
+  }
+
+  @ApiStatus.AvailableSince("0.2.0")
+  @ApiStatus.Internal
+  private static @Unmodifiable ImmutableList<Block> blocksInternal() {
+    final ImmutableList<Block> build = Streams.concat(
+        instanceStream(RoadBlocks.class, Block.class),
+        RoadSlabBlocks.SLABS.stream(),
+        instanceStream(RoadMarkBlocks.class, Block.class),
+        instanceStream(LightBlocks.class, Block.class),
+        instanceStream(HungSignBlocks.class, Block.class),
+        instanceStream(WallSignBlocks.class, Block.class),
+        instanceStream(StandingSignBlocks.class, Block.class),
+        instanceStream(HandrailBlocks.class, Block.class).flatMap(block -> block instanceof HandrailBlock handrailBlock ? Arrays.stream(handrailBlock.selfAndVariants()) : Stream.of(block)),
+        instanceStream(ColoredBlocks.class, Block.class)
+    ).map(Objects::requireNonNull).collect(ImmutableList.toImmutableList());
+    if (build.isEmpty()) {
+      throw new AssertionError("The collection returned is empty, which is not expected. You may have to report to the author of Mishang Urban Construction mod.");
+    }
+    return build;
+  }
+
+  /**
+   * 该模组的所有方块字段及其值的集合。会通过反射来访问字段，并记住这个值，下次直接返回该值。对于栏杆方块，包括其所有的栏杆变种。
+   *
+   * @return 由方块字段和值组成的不可变映射。第一次调用时会生成，此后的所有调用都会直接使用这个值。
+   */
+  @ApiStatus.AvailableSince("0.2.0")
+  public static @Unmodifiable ImmutableList<Block> blocks() {
+    return memoizedBlocks.get();
+  }
+
+  /**
+   * 该模组的所有物品字段及其值的集合。会通过反射来访问字段，并记住这个值，下次直接返回该值。
+   *
+   * @return 由物品字段和值组成的不可变映射。第一次调用时会生成，此后的所有调用都会直接使用这个值。
+   */
+  @ApiStatus.AvailableSince("0.2.0")
+  public static @Unmodifiable List<Item> items() {
+    return MishangucItems.items();
+  }
+
+  /**
+   * 迭代某个类中的所有字段，并返回由 public static final 字段组成的流。
+   *
+   * @param containerClass 包含该字段的类，该字段不一定要属于该类。
+   * @return 由类中的 public static final 字段组成的流。
+   */
+  public static Stream<Field> fieldStream(Class<?> containerClass) {
+    return Arrays.stream(containerClass.getFields())
+        .filter(
+            field -> {
+              int modifier = field.getModifiers();
+              return Modifier.isPublic(modifier)
+                  && Modifier.isStatic(modifier)
+                  && Modifier.isFinal(modifier);
+            });
+  }
+
+  public static <T> Stream<Map.Entry<Field, T>> instanceEntryStream(Stream<Field> fieldStream, Class<T> castToClass) {
+    return fieldStream.flatMap(field -> {
+      final Object o;
+      try {
+        field.setAccessible(true);
+        o = field.get(null);
+      } catch (IllegalAccessException e) {
+        throw new InternalError("Cannot access value of the field in Mishang Urban Construction mod.", e);
+      }
+      if (o instanceof ColorCollection<?> colorCollection) {
+        return colorCollection.asList().stream().map(s -> castToClass.isInstance(s) ? castToClass.cast(s) : null).filter(Objects::nonNull).map(v -> Maps.immutableEntry(field, v));
+      } else if (castToClass.isInstance(o)) {
+        return Stream.of(Maps.immutableEntry(field, castToClass.cast(o)));
+      } else {
+        return null;
+      }
+    }).filter(Objects::nonNull);
+  }
+
+  public static <T> Stream<Map.Entry<Field, T>> instanceEntryStream(Class<?> containerClass, Class<T> castToClass) {
+    return instanceEntryStream(fieldStream(containerClass), castToClass);
+  }
+
+  public static <T> Stream<T> instanceStream(Class<?> containerClass, Class<T> castToClass) {
+    return instanceEntryStream(containerClass, castToClass).map(Map.Entry::getValue);
+  }
+
+  /**
+   * 重新整理 textContexts。
+   *
+   * @param textContexts 由 textContexts 组成的集合。
+   */
+  public static void rearrange(Collection<TextContext> textContexts) {
+    final EnumMap<VerticalAlign, List<TextContext>> directionToContexts = new EnumMap<>(VerticalAlign.class);
+    for (TextContext textContext : textContexts) {
+      if (!textContext.absolute) {
+        directionToContexts.putIfAbsent(textContext.verticalAlign, new ArrayList<>());
+        directionToContexts.get(textContext.verticalAlign).add(textContext);
+      }
+    }
+    directionToContexts.forEach((verticalAlign, list) -> {
+      float stackedHeight = 0;
+      for (TextContext textContext : list) {
+        textContext.offsetY = stackedHeight += textContext.getMarginTop() / 2f;
+        stackedHeight += textContext.getHeight() / 2f;
+        stackedHeight += textContext.getMarginTop() / 2f;
+      }
+      for (TextContext textContext : list) {
+        switch (verticalAlign) {
+          case MIDDLE -> textContext.offsetY -= (stackedHeight - textContext.getHeight() / 2f) / 2f;
+          case BOTTOM -> textContext.offsetY -= stackedHeight - textContext.getHeight() / 2f;
+        }
+      }
+    });
+  }
+
+  /**
+   * 对一个坐标轴进行旋转。
+   */
+  public static Direction.Axis rotateAxis(Rotation rotation, Direction.Axis axis) {
+    return switch (rotation) {
+      case COUNTERCLOCKWISE_90, CLOCKWISE_90 -> switch (axis) {
+        case X -> Direction.Axis.Z;
+        case Z -> Direction.Axis.X;
+        default -> axis;
+      };
+      default -> axis;
+    };
+  }
+
+  public static <T extends Comparable<T>> BlockState with(BlockState state, Property<T> property, String name) {
+    return property.getValue(name).map(value -> state.setValue(property, value)).orElse(state);
+  }
+
+  @ApiStatus.AvailableSince("0.2.1")
+  public static MutableComponent describeColor(int color) {
+    return describeColor(color, Component.literal(formatColorHex(color)));
+  }
+
+  public static MutableComponent describeColor(int color, Component text) {
+    return Component.empty().append(Component.literal("■").withStyle(style -> style.withColor(color))).append(text);
+  }
+
+  /**
+   * 接收一个整数形式的颜色，考虑到 Minecraft 可能存在带有 alpha 通道的颜色，因此当检测到有 alpha 通道时，格式化为 #rrggbbaa 的格式，否则格式化为 #rrggbb 的格式。
+   */
+  public static String formatColorHex(int color) {
+    final int alpha = (color >> 24) & 0xff;
+    return alpha != 255 ? String.format("#%08x", (color & 0xffffff) << 8 | alpha) : String.format("#%06x", color & 0xffffff);
+  }
+
+  /**
+   * 从字符串获取颜色，可以是支持的颜色名称，或者十六进制的格式。例如，{@code "red"} 或 {@code "#fab"}。
+   */
+  public static DataResult<Integer> parseColor(String s) {
+    if (s.startsWith("#")) {
+      try {
+        final String hexPart = s.substring(1);
+        final int i = Integer.parseUnsignedInt(hexPart, 16);
+        switch (hexPart.length()) {
+          case 4 -> {
+            final int r, g, b, a;
+            r = i >> 12 & 0xf;
+            g = i >> 8 & 0xf;
+            b = i >> 4 & 0xf;
+            a = i & 0xf;
+            return DataResult.success(ARGB.color(a * 17, r * 17, g * 17, b * 17));
+          }
+          case 3 -> {
+            final int r, g, b;
+            r = i >> 8 & 0xf;
+            g = i >> 4 & 0xf;
+            b = i & 0xf;
+            return DataResult.success(ARGB.color(255, r * 17, g * 17, b * 17));
+          }
+          case 8 -> {
+            final int rgb = i >> 8 & 0xffffff;
+            final int a = i & 0xff;
+            return DataResult.success(ARGB.color(a, rgb));
+          }
+          case 6 -> {
+            return DataResult.success(i & 0xffffff | 0xff000000);
+          }
+          default -> {
+            return DataResult.error(() -> "Invalid value length: " + s);
+          }
+        }
+      } catch (NumberFormatException e) {
+        return DataResult.error(() -> "Cannot parse number value: " + s);
+      }
+    } else {
+      return TextColor.parseColor(s).map(textColor -> textColor.getValue() | 0xff000000);
+    }
+  }
+
+  public static MutableComponent describeShortcut(Component shortcut) {
+    return Component.translatable("message.mishanguc.keyboard_shortcut.composed", shortcut).withStyle(ChatFormatting.GRAY);
+  }
+
+  @ApiStatus.AvailableSince("0.2.4")
+  public static String composeStraightLineTexture(LineColor lineColor, LineType lineType) {
+    if (lineType == LineType.NORMAL) {
+      return lineColor.getSerializedName() + "_straight_line";
+    } else {
+      return lineColor.getSerializedName() + "_straight_" + lineType.getSerializedName() + "_line";
+    }
+  }
+
+  public static String composeAngleLineTexture(LineColor lineColor, LineType lineType, boolean bevel) {
+    return lineColor.getSerializedName() + "_" + (lineType == LineType.NORMAL ? "" : lineColor.getSerializedName() + "_") + (bevel ? "bevel" : "right") + "_angle_line";
+  }
+
+  public static final Codec<Integer> COLOR_CODEC = Codec.INT.xmap(integer -> ARGB.alpha(integer) < 1 ? ARGB.opaque(integer) : integer, Function.identity()).mapResult(new Codec.ResultFunction<>() {
+    public static final Decoder<Integer> COLOR_CODEC_STRING = Codec.STRING.flatMap(s -> TextColor.parseColor(s).map(TextColor::getValue));
+    public static final Codec<Integer> COLOR_CODEC_LIST = Codec.list(Codec.INT).flatXmap(integers -> {
+      if (integers.size() < 3 || integers.size() > 4) {
+        return DataResult.<Integer>error(() -> "The length of the list that indicates a color should be 3 or 4, but got " + integers.size());
+      }
+      int red = integers.get(0) & 0xff;
+      int green = integers.get(1) & 0xff;
+      int blue = integers.get(2) & 0xff;
+      int alpha = integers.size() > 3 ? integers.get(3) & 0xff : 0xff;
+      return DataResult.success(red << 16 | green << 8 | blue | alpha << 24);
+    }, integer -> DataResult.success(IntList.of(integer >> 16 & 0xff, integer >> 8 & 0xff, integer & 0xff, integer >> 24 & 0xff)));
+
+    @Override
+    public <T> DataResult<Pair<Integer, T>> apply(DynamicOps<T> ops, T input, DataResult<Pair<Integer, T>> a) {
+      if (a.isSuccess()) {
+        return a;
+      } else {
+        if (ops.getStringValue(input).isSuccess()) {
+          return COLOR_CODEC_STRING.decode(ops, input);
+        }
+        if (ops.getList(input).isSuccess()) {
+          return COLOR_CODEC_LIST.decode(ops, input);
+        }
+        if (ops.getMapValues(input).isSuccess()) {
+          final DataResult<T> signResult = ops.get(input, "signColor");
+          if (signResult.isSuccess()) return signResult.flatMap(t -> DyeColor.CODEC.map(DyeColor::getTextColor).decode(ops, t));
+          final DataResult<T> fireworkResult = ops.get(input, "fireworkColor");
+          if (fireworkResult.isSuccess()) return fireworkResult.flatMap(t -> DyeColor.CODEC.map(DyeColor::getFireworkColor).decode(ops, t));
+          final DataResult<T> mapResult = ops.get(input, "mapColor");
+          if (mapResult.isSuccess()) return mapResult.flatMap(t -> DyeColor.CODEC.map(dyeColor -> dyeColor.getMapColor().col).decode(ops, t));
+          return DataResult.error(() -> "Missing field: singColor, fireworkColor or mapColor");
+        }
+
+        return DataResult.error(() -> "Cannot parse color");
+      }
+    }
+
+    @Override
+    public <T> DataResult<T> coApply(DynamicOps<T> ops, Integer input, DataResult<T> t) {
+      return t;
+    }
+  });
+
+  public static int readColorFromNbtElement(Tag nbtColor) {
+    return COLOR_CODEC.decode(NbtOps.INSTANCE, nbtColor).result().map(Pair::getFirst).orElse(0);
+  }
+
+  /**
+   * 将数字转换为字符串，如果这个符点数的值正好等于整数，那么转换为字符串时不显示小数部分。
+   */
+  public static String numberToString(float value) {
+    final int intValue = (int) value;
+    return value == intValue ? Integer.toString(intValue) : Float.toString(value);
+  }
+
+  public static final Supplier<ImmutableMap<DyeColor, TagKey<Item>>> DYE_ITEM_TAGS = Suppliers.memoize(() -> ImmutableMap.<DyeColor, TagKey<Item>>builder()
+      .put(DyeColor.BLACK, ConventionalItemTags.BLACK_DYES)
+      .put(DyeColor.BLUE, ConventionalItemTags.BLUE_DYES)
+      .put(DyeColor.BROWN, ConventionalItemTags.BROWN_DYES)
+      .put(DyeColor.CYAN, ConventionalItemTags.CYAN_DYES)
+      .put(DyeColor.GRAY, ConventionalItemTags.GRAY_DYES)
+      .put(DyeColor.GREEN, ConventionalItemTags.GREEN_DYES)
+      .put(DyeColor.LIGHT_BLUE, ConventionalItemTags.LIGHT_BLUE_DYES)
+      .put(DyeColor.LIGHT_GRAY, ConventionalItemTags.LIGHT_GRAY_DYES)
+      .put(DyeColor.LIME, ConventionalItemTags.LIME_DYES)
+      .put(DyeColor.MAGENTA, ConventionalItemTags.MAGENTA_DYES)
+      .put(DyeColor.ORANGE, ConventionalItemTags.ORANGE_DYES)
+      .put(DyeColor.PINK, ConventionalItemTags.PINK_DYES)
+      .put(DyeColor.PURPLE, ConventionalItemTags.PURPLE_DYES)
+      .put(DyeColor.RED, ConventionalItemTags.RED_DYES)
+      .put(DyeColor.WHITE, ConventionalItemTags.WHITE_DYES)
+      .put(DyeColor.YELLOW, ConventionalItemTags.YELLOW_DYES)
+      .build());
+}

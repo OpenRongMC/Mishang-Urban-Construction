@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "mishanguc:soul_soil_decorated_obsidian_handrail"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

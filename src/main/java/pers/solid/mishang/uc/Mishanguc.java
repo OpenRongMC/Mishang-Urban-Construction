@@ -1,0 +1,465 @@
+package pers.solid.mishang.uc;
+
+import com.google.common.collect.ImmutableSet;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.Event;
+import net.fabricmc.fabric.api.event.EventFactory;
+import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.registry.FlammableBlockRegistry;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.pattern.BlockInWorld;
+import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import org.apache.commons.lang3.Validate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import pers.solid.mishang.uc.block.ColoredBlock;
+import pers.solid.mishang.uc.block.GlassHandrailBlock;
+import pers.solid.mishang.uc.block.Road;
+import pers.solid.mishang.uc.blockentity.BlockEntityWithText;
+import pers.solid.mishang.uc.blockentity.ColoredBlockEntity;
+import pers.solid.mishang.uc.blockentity.MishangucBlockEntities;
+import pers.solid.mishang.uc.blocks.*;
+import pers.solid.mishang.uc.item.*;
+import pers.solid.mishang.uc.mixin.PoiTypesAccessor;
+import pers.solid.mishang.uc.networking.*;
+import pers.solid.mishang.uc.text.SpecialDrawableTypes;
+import pers.solid.mishang.uc.util.BlockMatchingRule;
+import pers.solid.mishang.uc.util.ColorfulBlockRegistry;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+public class Mishanguc implements ModInitializer {
+  public static final Logger MISHANG_LOGGER = LoggerFactory.getLogger("Mishang Urban Construction");
+  /**
+   * 比 {@link AttackBlockCallback#EVENT} 更好！
+   */
+  public static final Event<AttackBlockCallback> BEGIN_ATTACK_BLOCK_EVENT =
+      EventFactory.createArrayBacked(
+          AttackBlockCallback.class,
+          (listeners) ->
+              (player, world, hand, pos, direction) -> {
+                for (AttackBlockCallback event : listeners) {
+                  InteractionResult result = event.interact(player, world, hand, pos, direction);
+
+                  if (result != InteractionResult.PASS) {
+                    return result;
+                  }
+                }
+                return InteractionResult.PASS;
+              });
+
+  public static final Event<AttackBlockCallback> PROGRESS_ATTACK_BLOCK_EVENT =
+      EventFactory.createArrayBacked(
+          AttackBlockCallback.class,
+          (listeners) ->
+              (player, world, hand, pos, direction) -> {
+                for (AttackBlockCallback event : listeners) {
+                  InteractionResult result = event.interact(player, world, hand, pos, direction);
+                  if (result != InteractionResult.PASS) {
+                    return result;
+                  }
+                }
+                return InteractionResult.PASS;
+              });
+
+  private static final Identifier EXAMPLE_ID = Identifier.fromNamespaceAndPath("mishanguc", "");
+
+  /**
+   * 创建使用本模组命名空间（{@code mishanguc}）的 ID。此方法可以提高不同版本之间的兼容性，同时在部分版本中避免命名空间的冗余校验。
+   *
+   * @return 使用本模组命名空间（{@code mishanguc}）的 ID。
+   */
+  public static Identifier id(String path) {
+    return EXAMPLE_ID.withPath(path);
+  }
+
+  private static void registerCommands() {
+  }
+
+  private static void registerFlammableAndFuels() {
+    final Object2IntMap<Block> fuelRegistry = new Object2IntOpenHashMap<>();
+
+    // 注册可燃方块
+    final FlammableBlockRegistry flammableBlockRegistry = FlammableBlockRegistry.getDefaultInstance();
+
+    for (Block block : MishangucBlocks.BlockCollection.woodenSignBlocks) {
+      flammableBlockRegistry.add(block, 5, 20);
+    }
+
+    for (Block handrail : MishangucBlocks.BlockCollection.woodenHandrails) {
+      flammableBlockRegistry.add(handrail, 5, 20);
+    }
+
+    flammableBlockRegistry.add(ColoredBlocks.COLORED_PLANKS, 5, 20);
+    flammableBlockRegistry.add(ColoredBlocks.COLORED_PLANK_STAIRS, 5, 20);
+    flammableBlockRegistry.add(ColoredBlocks.COLORED_PLANK_SLAB, 5, 20);
+    flammableBlockRegistry.add(ColoredBlocks.COLORED_WOOL, 30, 60);
+    flammableBlockRegistry.add(ColoredBlocks.COLORED_WOOL_STAIRS, 30, 60);
+    flammableBlockRegistry.add(ColoredBlocks.COLORED_WOOL_SLAB, 30, 60);
+  }
+
+  private static void registerNetworkingReceiver() {
+    // 注册服务器接收
+    PayloadTypeRegistry.serverboundPlay().register(SignEditFinishPayload.ID, SignEditFinishPayload.CODEC);
+    ServerPlayNetworking.registerGlobalReceiver(SignEditFinishPayload.ID, BlockEntityWithText.PACKET_HANDLER);
+    PayloadTypeRegistry.serverboundPlay().register(ItemScrollPayload.ID, ItemScrollPayload.CODEC);
+    ServerPlayNetworking.registerGlobalReceiver(ItemScrollPayload.ID, (payload, context) -> {
+      final int selectedSlot = payload.selectedSlot();
+      final double scrollAmount = payload.scrollAmount();
+      final ServerPlayer player = context.player();
+      player.level().getServer().execute(() -> {
+        final ItemStack stack = player.getInventory().getItem(selectedSlot);
+        if (stack.getItem() instanceof HotbarScrollInteraction interaction) {
+          interaction.onScroll(selectedSlot, scrollAmount, player, stack);
+        }
+      });
+    });
+    PayloadTypeRegistry.serverboundPlay().register(SlabToolPayload.ID, SlabToolPayload.CODEC);
+    ServerPlayNetworking.registerGlobalReceiver(SlabToolPayload.ID, SlabToolItem.Handler.INSTANCE);
+    PayloadTypeRegistry.clientboundPlay().register(EditSignPayload.ID, EditSignPayload.CODEC);
+    PayloadTypeRegistry.clientboundPlay().register(GetBlockDataPayload.ID, GetBlockDataPayload.CODEC);
+    PayloadTypeRegistry.clientboundPlay().register(GetEntityDataPayload.ID, GetEntityDataPayload.CODEC);
+    ServerPlayerEvents.JOIN.register(serverPlayerEntity -> {
+      final GameRules gameRules = serverPlayerEntity.level().getGameRules();
+      MishangucRules.sync(serverPlayerEntity, (short) 0, gameRules.get(MishangucRules.FORCE_PLACING_TOOL_ACCESS));
+      MishangucRules.sync(serverPlayerEntity, (short) 1, gameRules.get(MishangucRules.CARRYING_TOOL_ACCESS));
+    });
+    PayloadTypeRegistry.clientboundPlay().register(RuleChangedPayload.ID, RuleChangedPayload.CODEC);
+  }
+
+  private static void registerEvents() {
+    // 注册事件
+    BEGIN_ATTACK_BLOCK_EVENT.register(
+        // 仅限客户端执行
+        (player, world, hand, pos, direction) -> {
+          if (!world.isClientSide() || player.isSpectator()) {
+            return InteractionResult.PASS;
+          }
+          final ItemStack stack = player.getMainHandItem();
+          final Item item = stack.getItem();
+          if (item instanceof final BlockToolItem blockToolItem) {
+            return blockToolItem.beginAttackBlock(stack, player, world, hand, pos, direction, blockToolItem.includesFluid(stack, player.isShiftKeyDown()));
+          } else {
+            return InteractionResult.PASS;
+          }
+        });
+
+    PROGRESS_ATTACK_BLOCK_EVENT.register(
+        // 仅限客户端执行
+        (player, world, hand, pos, direction) -> {
+          if (!world.isClientSide() || player.isSpectator()) {
+            return InteractionResult.PASS;
+          }
+          final ItemStack stack = player.getItemInHand(hand);
+          final Item item = stack.getItem();
+          if (item instanceof final BlockToolItem blockToolItem) {
+            final BlockHitResult hitResult = (BlockHitResult) player.pick(5, 0, blockToolItem.includesFluid(stack, player.isShiftKeyDown()));
+            return blockToolItem.progressAttackBlock(player, world, hand, hitResult.getBlockPos(), hitResult.getDirection(), blockToolItem.includesFluid(stack, player.isShiftKeyDown()));
+          } else {
+            return InteractionResult.PASS;
+          }
+        });
+    AttackBlockCallback.EVENT.register(
+        // 仅限服务器执行
+        (player, world, hand, pos, direction) -> {
+          if (world.isClientSide() || player.isSpectator()) {
+            return InteractionResult.PASS;
+          }
+          final ItemStack stack = player.getItemInHand(hand);
+          final Item item = stack.getItem();
+          if (item instanceof final BlockToolItem blockToolItem) {
+            return blockToolItem.beginAttackBlock(stack, player, world, hand, pos, direction, blockToolItem.includesFluid(stack, player.isShiftKeyDown()));
+          } else {
+            return InteractionResult.PASS;
+          }
+        });
+    UseBlockCallback.EVENT.register(
+        (player, world, hand, hitResult) -> {
+          if (player.isSpectator()) return InteractionResult.PASS;
+          final ItemStack stackInHand = player.getItemInHand(hand);
+          final Item item = stackInHand.getItem();
+          if (!player.getAbilities().mayBuild && !stackInHand.canPlaceOnBlockInAdventureMode(new BlockInWorld(world, hitResult.getBlockPos(), false))) {
+            return InteractionResult.PASS;
+          }
+          if (item instanceof final BlockToolItem blockToolItem) {
+            return blockToolItem.useOnBlock(stackInHand, player, world, hitResult, hand, blockToolItem.includesFluid(stackInHand, player.isShiftKeyDown()));
+          } else {
+            return InteractionResult.PASS;
+          }
+        });
+    AttackEntityCallback.EVENT.register(
+        (player, world, hand, entity, hitResult) -> {
+          if (player.isSpectator()) return InteractionResult.PASS;
+          final ItemStack stackInHand = player.getItemInHand(hand);
+          final Item item = stackInHand.getItem();
+          if (item instanceof final InteractsWithEntity interactsWithEntity) {
+            return interactsWithEntity.attackEntityCallback(player, world, hand, entity, hitResult);
+          } else {
+            return InteractionResult.PASS;
+          }
+        });
+    UseEntityCallback.EVENT.register(
+        (player, world, hand, entity, hitResult) -> {
+          if (player.isSpectator()) return InteractionResult.PASS;
+          final ItemStack stackInHand = player.getItemInHand(hand);
+          final Item item = stackInHand.getItem();
+          if (item instanceof final InteractsWithEntity interactsWithEntity) {
+            return interactsWithEntity.useEntityCallback(player, world, hand, entity, hitResult);
+          } else {
+            return InteractionResult.PASS;
+          }
+        });
+
+    UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+      if (player.isSpectator()) return InteractionResult.PASS;
+      final ItemStack stack = player.getItemInHand(hand);
+      final BlockPos blockPos = hitResult.getBlockPos();
+      final BlockState blockState = world.getBlockState(blockPos);
+      if (!blockState.is(Blocks.WATER_CAULDRON)) {
+        return InteractionResult.PASS;
+      }
+      return Road.CLEAN_ROAD_BLOCK.interact(blockState, world, blockPos, player, hand, stack);
+    });
+
+    UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+      if (player.isSpectator()) {
+        return InteractionResult.PASS;
+      }
+      if (hitResult.getType() == HitResult.Type.BLOCK && hitResult instanceof BlockHitResult blockHitResult) {
+        final BlockPos blockPos = blockHitResult.getBlockPos();
+        final BlockEntity blockEntity = world.getBlockEntity(blockPos);
+        if (blockEntity instanceof ColoredBlockEntity coloredBlockEntity) {
+          for (Map.Entry<DyeColor, TagKey<Item>> entry : MishangUtils.DYE_ITEM_TAGS.get().entrySet()) {
+            final ItemStack stack = player.getItemInHand(hand);
+            if (stack.is(entry.getValue())) {
+              coloredBlockEntity.setColor(entry.getKey().getTextureDiffuseColor());
+              blockEntity.setChanged();
+              world.sendBlockUpdated(blockPos, blockEntity.getBlockState(), blockEntity.getBlockState(), Block.UPDATE_CLIENTS);
+              stack.consume(1, player);
+              world.playSound(null, blockPos, SoundEvents.DYE_USE, SoundSource.BLOCKS, 1.0F, 1.0F);
+              return InteractionResult.SUCCESS;
+            }
+          }
+        }
+      }
+      return InteractionResult.PASS;
+    });
+  }
+
+  private static void registerColoredBlocks() {
+    final Object2ObjectMap<Block, Block> blockMap = ColoredBlock.BASE_TO_COLORED;
+    final Object2ObjectMap<TagKey<Block>, Block> tagMap = ColoredBlock.BASE_TAG_TO_COLORED;
+    tagMap.put(BlockTags.WOOL, ColoredBlocks.COLORED_WOOL);
+    tagMap.put(BlockTags.WOOL_STAIRS, ColoredBlocks.COLORED_WOOL_STAIRS);
+    tagMap.put(BlockTags.WOOL_SLABS, ColoredBlocks.COLORED_WOOL_SLAB);
+
+    tagMap.put(BlockTags.TERRACOTTA, ColoredBlocks.COLORED_TERRACOTTA);
+    tagMap.put(TagKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath("extshape", "terracotta_stairs")), ColoredBlocks.COLORED_TERRACOTTA_STAIRS);
+    tagMap.put(TagKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath("extshape", "terracotta_slabs")), ColoredBlocks.COLORED_TERRACOTTA_SLAB);
+
+    tagMap.put(BlockTags.CONCRETE, ColoredBlocks.COLORED_CONCRETE);
+    tagMap.put(BlockTags.CONCRETE_STAIRS, ColoredBlocks.COLORED_CONCRETE_STAIRS);
+    tagMap.put(BlockTags.CONCRETE_SLABS, ColoredBlocks.COLORED_CONCRETE_SLAB);
+
+    // 下面的木制方块不含任何下界方块和竹制方块
+    List.of(Blocks.OAK_PLANKS, Blocks.SPRUCE_PLANKS, Blocks.BIRCH_PLANKS, Blocks.JUNGLE_PLANKS, Blocks.ACACIA_PLANKS, Blocks.DARK_OAK_PLANKS, Blocks.PALE_OAK_PLANKS, Blocks.MANGROVE_PLANKS, Blocks.POPLAR_PLANKS, Blocks.CHERRY_PLANKS).forEach(block -> blockMap.put(block, ColoredBlocks.COLORED_PLANKS));
+    List.of(Blocks.OAK_STAIRS, Blocks.SPRUCE_STAIRS, Blocks.BIRCH_STAIRS, Blocks.JUNGLE_STAIRS, Blocks.ACACIA_STAIRS, Blocks.DARK_OAK_STAIRS, Blocks.PALE_OAK_STAIRS, Blocks.MANGROVE_STAIRS, Blocks.POPLAR_STAIRS, Blocks.CHERRY_STAIRS).forEach(block -> blockMap.put(block, ColoredBlocks.COLORED_PLANK_STAIRS));
+    List.of(Blocks.OAK_SLAB, Blocks.SPRUCE_SLAB, Blocks.BIRCH_SLAB, Blocks.JUNGLE_SLAB, Blocks.ACACIA_SLAB, Blocks.DARK_OAK_SLAB, Blocks.PALE_OAK_SLAB, Blocks.MANGROVE_SLAB, Blocks.POPLAR_SLAB, Blocks.CHERRY_SLAB).forEach(block -> blockMap.put(block, ColoredBlocks.COLORED_PLANK_SLAB));
+
+    blockMap.put(Blocks.DIRT, ColoredBlocks.COLORED_DIRT);
+    blockMap.put(Blocks.COBBLESTONE, ColoredBlocks.COLORED_COBBLESTONE);
+    blockMap.put(Blocks.COBBLESTONE_STAIRS, ColoredBlocks.COLORED_COBBLESTONE_STAIRS);
+    blockMap.put(Blocks.COBBLESTONE_SLAB, ColoredBlocks.COLORED_COBBLESTONE_SLAB);
+    blockMap.put(Blocks.ANDESITE, ColoredBlocks.COLORED_ANDESITE);
+    blockMap.put(Blocks.ANDESITE_STAIRS, ColoredBlocks.COLORED_ANDESITE_STAIRS);
+    blockMap.put(Blocks.ANDESITE_SLAB, ColoredBlocks.COLORED_ANDESITE_SLAB);
+    blockMap.put(Blocks.DIORITE, ColoredBlocks.COLORED_DIORITE);
+    blockMap.put(Blocks.DIORITE_STAIRS, ColoredBlocks.COLORED_DIORITE_STAIRS);
+    blockMap.put(Blocks.DIORITE_SLAB, ColoredBlocks.COLORED_DIORITE_SLAB);
+    blockMap.put(Blocks.CALCITE, ColoredBlocks.COLORED_CALCITE);
+    blockMap.put(Blocks.TUFF, ColoredBlocks.COLORED_TUFF);
+    blockMap.put(Blocks.IRON_BLOCK, ColoredBlocks.COLORED_IRON_BLOCK);
+    blockMap.put(Blocks.STONE, ColoredBlocks.COLORED_STONE);
+    blockMap.put(Blocks.STONE_STAIRS, ColoredBlocks.COLORED_STONE_STAIRS);
+    blockMap.put(Blocks.STONE_SLAB, ColoredBlocks.COLORED_STONE_SLAB);
+    blockMap.put(Blocks.STONE_BRICKS, ColoredBlocks.COLORED_STONE_BRICKS);
+    blockMap.put(Blocks.STONE_BRICK_STAIRS, ColoredBlocks.COLORED_STONE_BRICK_STAIRS);
+    blockMap.put(Blocks.STONE_BRICK_SLAB, ColoredBlocks.COLORED_STONE_BRICK_SLAB);
+    blockMap.put(Blocks.QUARTZ_BLOCK, ColoredBlocks.COLORED_QUARTZ_BLOCK);
+    blockMap.put(Blocks.QUARTZ_STAIRS, ColoredBlocks.COLORED_QUARTZ_STAIRS);
+    blockMap.put(Blocks.QUARTZ_SLAB, ColoredBlocks.COLORED_QUARTZ_SLAB);
+    blockMap.put(Blocks.CHISELED_QUARTZ_BLOCK, ColoredBlocks.COLORED_CHISELED_QUARTZ_BLOCK);
+    blockMap.put(Blocks.QUARTZ_BRICKS, ColoredBlocks.COLORED_QUARTZ_BRICKS);
+    blockMap.put(Blocks.SMOOTH_QUARTZ, ColoredBlocks.COLORED_SMOOTH_QUARTZ);
+    blockMap.put(Blocks.SMOOTH_QUARTZ_STAIRS, ColoredBlocks.COLORED_SMOOTH_QUARTZ_STAIRS);
+    blockMap.put(Blocks.SMOOTH_QUARTZ_SLAB, ColoredBlocks.COLORED_SMOOTH_QUARTZ_SLAB);
+    blockMap.put(Blocks.QUARTZ_PILLAR, ColoredBlocks.COLORED_QUARTZ_PILLAR);
+    blockMap.put(Blocks.PURPUR_BLOCK, ColoredBlocks.COLORED_PURPUR_BLOCK);
+    blockMap.put(Blocks.PURPUR_PILLAR, ColoredBlocks.COLORED_PURPUR_PILLAR);
+    blockMap.put(Blocks.END_STONE, ColoredBlocks.COLORED_END_STONE);
+    blockMap.put(Blocks.END_STONE_BRICKS, ColoredBlocks.COLORED_END_STONE_BRICKS);
+    blockMap.put(Blocks.END_STONE_BRICK_STAIRS, ColoredBlocks.COLORED_END_STONE_BRICK_STAIRS);
+    blockMap.put(Blocks.END_STONE_BRICK_SLAB, ColoredBlocks.COLORED_END_STONE_BRICK_SLAB);
+    blockMap.put(Blocks.NETHER_PORTAL, ColoredBlocks.COLORED_NETHER_PORTAL);
+    blockMap.put(LightBlocks.WHITE_LIGHT, ColoredBlocks.COLORED_LIGHT);
+    blockMap.put(LightBlocks.YELLOW_LIGHT, ColoredBlocks.COLORED_LIGHT);
+    blockMap.put(LightBlocks.CYAN_LIGHT, ColoredBlocks.COLORED_LIGHT);
+    blockMap.put(Blocks.GLASS, ColoredBlocks.COLORED_GLASS);
+
+    Blocks.STAINED_GLASS.forEach(block -> blockMap.put(block, ColoredBlocks.COLORED_GLASS));
+    blockMap.put(Blocks.GLASS_PANE, ColoredBlocks.COLORED_GLASS_PANE);
+    Blocks.STAINED_GLASS_PANE.forEach(block -> blockMap.put(block, ColoredBlocks.COLORED_GLASS_PANE));
+    blockMap.put(Blocks.ICE, ColoredBlocks.COLORED_ICE);
+    blockMap.put(Blocks.SNOW_BLOCK, ColoredBlocks.COLORED_SNOW_BLOCK);
+    blockMap.put(Blocks.PACKED_ICE, ColoredBlocks.COLORED_PACKED_ICE);
+    blockMap.put(Blocks.OAK_LEAVES, ColoredBlocks.COLORED_OAK_LEAVES);
+    blockMap.put(Blocks.DARK_OAK_LEAVES, ColoredBlocks.COLORED_DARK_OAK_LEAVES);
+    blockMap.put(Blocks.PALE_OAK_LEAVES, ColoredBlocks.COLORED_PALE_OAK_LEAVES);
+    blockMap.put(Blocks.SPRUCE_LEAVES, ColoredBlocks.COLORED_SPRUCE_LEAVES);
+    blockMap.put(Blocks.JUNGLE_LEAVES, ColoredBlocks.COLORED_JUNGLE_LEAVES);
+    blockMap.put(Blocks.BIRCH_LEAVES, ColoredBlocks.COLORED_BIRCH_LEAVES);
+    blockMap.put(Blocks.ACACIA_LEAVES, ColoredBlocks.COLORED_ACACIA_LEAVES);
+    blockMap.put(Blocks.CHERRY_LEAVES, ColoredBlocks.COLORED_CHERRY_LEAVES);
+    blockMap.put(Blocks.MANGROVE_LEAVES, ColoredBlocks.COLORED_MANGROVE_LEAVES);
+    blockMap.put(Blocks.YELLOW_POPLAR_LEAVES, ColoredBlocks.COLORED_POPLAR_LEAVES);
+    blockMap.put(Blocks.ORANGE_POPLAR_LEAVES, ColoredBlocks.COLORED_POPLAR_LEAVES);
+    blockMap.put(Blocks.RED_POPLAR_LEAVES, ColoredBlocks.COLORED_POPLAR_LEAVES);
+    blockMap.put(Blocks.BRICKS, ColoredBlocks.COLORED_BRICKS);
+    blockMap.put(Blocks.BRICK_STAIRS, ColoredBlocks.COLORED_BRICK_STAIRS);
+    blockMap.put(Blocks.BRICK_SLAB, ColoredBlocks.COLORED_BRICK_SLAB);
+    for (GlassHandrailBlock block : HandrailBlocks.DECORATED_IRON_HANDRAIL.asList()) {
+      blockMap.put(block, HandrailBlocks.COLORED_DECORATED_IRON_HANDRAIL);
+      blockMap.put(block.corner(), HandrailBlocks.COLORED_DECORATED_IRON_HANDRAIL.corner());
+      blockMap.put(block.central(), HandrailBlocks.COLORED_DECORATED_IRON_HANDRAIL.central());
+      blockMap.put(block.outer(), HandrailBlocks.COLORED_DECORATED_IRON_HANDRAIL.outer());
+      blockMap.put(block.stair(), HandrailBlocks.COLORED_DECORATED_IRON_HANDRAIL.stair());
+    }
+
+    tagMap.put(TagKey.create(Registries.BLOCK, id("concrete_hung_signs")), HungSignBlocks.COLORED_CONCRETE_HUNG_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("glowing_concrete_hung_signs")), HungSignBlocks.COLORED_GLOWING_CONCRETE_HUNG_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("concrete_hung_sign_bars")), HungSignBlocks.COLORED_CONCRETE_HUNG_SIGN_BAR);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("terracotta_hung_signs")), HungSignBlocks.COLORED_TERRACOTTA_HUNG_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("glowing_terracotta_hung_signs")), HungSignBlocks.COLORED_GLOWING_TERRACOTTA_HUNG_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("terracotta_hung_sign_bars")), HungSignBlocks.COLORED_TERRACOTTA_HUNG_SIGN_BAR);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("concrete_standing_signs")), StandingSignBlocks.COLORED_CONCRETE_STANDING_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("terracotta_standing_signs")), StandingSignBlocks.COLORED_TERRACOTTA_STANDING_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("glowing_concrete_standing_signs")), StandingSignBlocks.COLORED_GLOWING_CONCRETE_STANDING_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("glowing_terracotta_standing_signs")), StandingSignBlocks.COLORED_GLOWING_TERRACOTTA_STANDING_SIGN);
+
+    blockMap.put(HungSignBlocks.STONE_HUNG_SIGN, HungSignBlocks.COLORED_STONE_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.GLOWING_STONE_HUNG_SIGN, HungSignBlocks.COLORED_GLOWING_STONE_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.STONE_HUNG_SIGN_BAR, HungSignBlocks.COLORED_STONE_HUNG_SIGN_BAR);
+    blockMap.put(HungSignBlocks.COBBLESTONE_HUNG_SIGN, HungSignBlocks.COLORED_COBBLESTONE_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.GLOWING_COBBLESTONE_HUNG_SIGN, HungSignBlocks.COLORED_GLOWING_COBBLESTONE_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.COBBLESTONE_HUNG_SIGN_BAR, HungSignBlocks.COLORED_COBBLESTONE_HUNG_SIGN_BAR);
+    blockMap.put(HungSignBlocks.STONE_BRICK_HUNG_SIGN, HungSignBlocks.COLORED_STONE_BRICK_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.GLOWING_STONE_BRICK_HUNG_SIGN, HungSignBlocks.COLORED_GLOWING_STONE_BRICK_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.STONE_BRICK_HUNG_SIGN_BAR, HungSignBlocks.COLORED_STONE_BRICK_HUNG_SIGN_BAR);
+    blockMap.put(HungSignBlocks.IRON_HUNG_SIGN, HungSignBlocks.COLORED_IRON_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.GLOWING_IRON_HUNG_SIGN, HungSignBlocks.COLORED_GLOWING_IRON_HUNG_SIGN);
+    blockMap.put(HungSignBlocks.IRON_HUNG_SIGN_BAR, HungSignBlocks.COLORED_IRON_HUNG_SIGN_BAR);
+
+    List.of(WallSignBlocks.OAK_WALL_SIGN, WallSignBlocks.SPRUCE_WALL_SIGN, WallSignBlocks.BIRCH_WALL_SIGN, WallSignBlocks.JUNGLE_WALL_SIGN, WallSignBlocks.ACACIA_WALL_SIGN, WallSignBlocks.CHERRY_WALL_SIGN, WallSignBlocks.DARK_OAK_WALL_SIGN, WallSignBlocks.PALE_OAK_WALL_SIGN, WallSignBlocks.MANGROVE_WALL_SIGN).forEach(b -> blockMap.put(b, WallSignBlocks.COLORED_WOODEN_WALL_SIGN));
+    tagMap.put(TagKey.create(Registries.BLOCK, id("concrete_wall_signs")), WallSignBlocks.COLORED_CONCRETE_WALL_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("terracotta_wall_signs")), WallSignBlocks.COLORED_TERRACOTTA_WALL_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("glowing_concrete_wall_signs")), WallSignBlocks.COLORED_GLOWING_CONCRETE_WALL_SIGN);
+    tagMap.put(TagKey.create(Registries.BLOCK, id("glowing_terracotta_wall_signs")), WallSignBlocks.COLORED_GLOWING_TERRACOTTA_WALL_SIGN);
+
+    blockMap.put(WallSignBlocks.STONE_WALL_SIGN, WallSignBlocks.COLORED_STONE_WALL_SIGN);
+    blockMap.put(WallSignBlocks.GLOWING_STONE_WALL_SIGN, WallSignBlocks.COLORED_GLOWING_STONE_WALL_SIGN);
+    blockMap.put(WallSignBlocks.COBBLESTONE_WALL_SIGN, WallSignBlocks.COLORED_COBBLESTONE_WALL_SIGN);
+    blockMap.put(WallSignBlocks.GLOWING_COBBLESTONE_WALL_SIGN, WallSignBlocks.COLORED_GLOWING_COBBLESTONE_WALL_SIGN);
+    blockMap.put(WallSignBlocks.STONE_BRICK_WALL_SIGN, WallSignBlocks.COLORED_STONE_BRICK_WALL_SIGN);
+    blockMap.put(WallSignBlocks.GLOWING_STONE_BRICK_WALL_SIGN, WallSignBlocks.COLORED_GLOWING_STONE_BRICK_WALL_SIGN);
+    blockMap.put(WallSignBlocks.IRON_WALL_SIGN, WallSignBlocks.COLORED_IRON_WALL_SIGN);
+    blockMap.put(WallSignBlocks.GLOWING_IRON_WALL_SIGN, WallSignBlocks.COLORED_GLOWING_IRON_WALL_SIGN);
+    blockMap.put(StandingSignBlocks.STONE_STANDING_SIGN, StandingSignBlocks.COLORED_STONE_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.GLOWING_STONE_STANDING_SIGN, StandingSignBlocks.COLORED_GLOWING_STONE_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.COBBLESTONE_STANDING_SIGN, StandingSignBlocks.COLORED_COBBLESTONE_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.GLOWING_COBBLESTONE_STANDING_SIGN, StandingSignBlocks.COLORED_GLOWING_COBBLESTONE_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.STONE_BRICK_STANDING_SIGN, StandingSignBlocks.COLORED_STONE_BRICK_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.GLOWING_STONE_BRICK_STANDING_SIGN, StandingSignBlocks.COLORED_GLOWING_STONE_BRICK_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.IRON_STANDING_SIGN, StandingSignBlocks.COLORED_IRON_STANDING_SIGN);
+    blockMap.put(StandingSignBlocks.GLOWING_IRON_STANDING_SIGN, StandingSignBlocks.COLORED_GLOWING_IRON_STANDING_SIGN);
+  }
+
+  @Override
+  public void onInitialize() {
+    // 初始化静态字段
+    MishangucBlocks.init();
+    MishangucItems.init();
+    MishangucBlockEntities.init();
+    Objects.requireNonNull(MishangucRules.CARRYING_TOOL_ACCESS);
+    SpecialDrawableTypes.init();
+    MishangucItemGroups.init();
+    Validate.validState(!BlockMatchingRule.REGISTRY.isEmpty());
+
+    registerEvents();
+    registerNetworkingReceiver();
+    registerFlammableAndFuels();
+
+    MishangucRules.registerRuleChangeCallbacks();
+    ColumnBuildingTool.registerTempMemoryEvents();
+
+    registerCommands();
+    registerColoredBlocks();
+    registerColorfulBlocks();
+
+    PoiTypesAccessor.callRegister(BuiltInRegistries.POINT_OF_INTEREST_TYPE, ResourceKey.create(Registries.POINT_OF_INTEREST_TYPE, id("nether_portal")), ImmutableSet.copyOf(ColoredBlocks.COLORED_NETHER_PORTAL.getStateDefinition().getPossibleStates()), 0, 1);
+
+    MishangucEntityData.init();
+  }
+
+  private static void registerColorfulBlocks() {
+    ColorfulBlockRegistry.registerColorfulBlocks(HandrailBlocks.DECORATED_IRON_HANDRAIL);
+    ColorfulBlockRegistry.registerColorfulBlocks(HandrailBlocks.SIMPLE_CONCRETE_HANDRAIL);
+    ColorfulBlockRegistry.registerColorfulBlocks(HandrailBlocks.SIMPLE_DYED_TERRACOTTA_HANDRAIL);
+    ColorfulBlockRegistry.registerColorfulBlocks(HandrailBlocks.SIMPLE_STAINED_GLASS_HANDRAIL);
+    ColorfulBlockRegistry.registerColorfulBlocks(HungSignBlocks.CONCRETE_HUNG_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(HungSignBlocks.CONCRETE_HUNG_SIGN_BAR);
+    ColorfulBlockRegistry.registerColorfulBlocks(HungSignBlocks.DYED_TERRACOTTA_HUNG_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(HungSignBlocks.DYED_TERRACOTTA_HUNG_SIGN_BAR);
+    ColorfulBlockRegistry.registerColorfulBlocks(HungSignBlocks.GLOWING_CONCRETE_HUNG_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(HungSignBlocks.GLOWING_DYED_TERRACOTTA_HUNG_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(StandingSignBlocks.CONCRETE_STANDING_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(StandingSignBlocks.GLOWING_CONCRETE_STANDING_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(StandingSignBlocks.DYED_TERRACOTTA_STANDING_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(StandingSignBlocks.GLOWING_DYED_TERRACOTTA_STANDING_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(WallSignBlocks.CONCRETE_WALL_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(WallSignBlocks.GLOWING_CONCRETE_WALL_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(WallSignBlocks.DYED_TERRACOTTA_WALL_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(WallSignBlocks.GLOWING_DYED_TERRACOTTA_WALL_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(WallSignBlocks.FULL_CONCRETE_WALL_SIGN);
+    ColorfulBlockRegistry.registerColorfulBlocks(WallSignBlocks.FULL_DYED_TERRACOTTA_WALL_SIGN);
+  }
+}

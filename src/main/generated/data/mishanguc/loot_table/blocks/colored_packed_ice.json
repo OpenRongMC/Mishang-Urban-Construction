@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:block",
+  "modifier": {
+    "type": "minecraft:copy_components",
+    "include": [
+      "mishanguc:color"
+    ],
+    "source": "block_entity"
+  },
+  "pools": [
+    {
+      "condition": "minecraft:tool/can_silk_touch",
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "mishanguc:colored_packed_ice"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "pers.solid.mishang.uc.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "AbstractBlockStateMixin",
+    "AgeableMobAccessor",
+    "AreaHelperMixin",
+    "BeaconBlockEntityAccessor",
+    "BeaconBlockEntityAccessor$BeamSegmentAccessor",
+    "BeaconBlockEntityMixin",
+    "BucketItemAccessor",
+    "ChunkHolderAccessor",
+    "ClickEventMixin",
+    "ContainerWidgetAccessor",
+    "FallingBlockEntityMixin",
+    "FenceBlockMixin",
+    "ItemsAccessor",
+    "ItemUsageContextInvoker",
+    "NbtCompoundAccessor",
+    "NetherPortalBlockMixin",
+    "PaneBlockMixin",
+    "PoiTypesAccessor",
+    "PortalForcerMixin",
+    "RecipeJsonBuilderMixins",
+    "RecipeJsonBuilderMixins$Shaped",
+    "RecipeJsonBuilderMixins$Shapeless",
+    "RecipeJsonBuilderMixins$SingleItem",
+    "RenderTypeFeatureRendererAccessor",
+    "WallBlockMixin"
+  ],
+  "client": [
+    "BetterClientPlayerInteractionManagerMixin",
+    "BlockStateModelGeneratorAccessor",
+    "ClientPlayerEntityMixin",
+    "EntryListWidgetAccessor",
+    "FallingBlockRendererMixin",
+    "FeatureRenderDispatcherMixin",
+    "MouseMixin",
+    "MovingBlockRenderStateMixin",
+    "OrderedSubmitNodeCollectorMixin",
+    "ScreenMixin",
+    "SubmitNodeCollectionMixin",
+    "SubmitNodeStorageMixin",
+    "SulfurCubeRendererMixin",
+    "TextFeatureRendererMixin",
+    "TextRendererAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

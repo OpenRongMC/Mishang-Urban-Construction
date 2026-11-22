@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "mishanguc:arrow_left_right_mark"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

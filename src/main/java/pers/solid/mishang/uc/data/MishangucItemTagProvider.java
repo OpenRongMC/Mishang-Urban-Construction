@@ -1,0 +1,153 @@
+package pers.solid.mishang.uc.data;
+
+import com.google.common.base.Predicates;
+import com.google.common.collect.ImmutableMap;
+import net.fabricmc.fabric.api.datagen.v1.FabricPackOutput;
+import net.fabricmc.fabric.api.datagen.v1.provider.FabricTagsProvider;
+import net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import pers.solid.mishang.uc.MishangUtils;
+import pers.solid.mishang.uc.Mishanguc;
+import pers.solid.mishang.uc.block.ColoredBlock;
+import pers.solid.mishang.uc.block.GlassHandrailBlock;
+import pers.solid.mishang.uc.block.SimpleHandrailBlock;
+import pers.solid.mishang.uc.blocks.ColoredBlocks;
+import pers.solid.mishang.uc.blocks.HandrailBlocks;
+import pers.solid.mishang.uc.blocks.LightBlocks;
+import pers.solid.mishang.uc.item.MishangucItems;
+
+import java.lang.reflect.Field;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+import static pers.solid.mishang.uc.MishangUtils.*;
+
+public class MishangucItemTagProvider extends FabricTagsProvider.ItemTagsProvider {
+  protected static final Map<DyeColor, TagKey<Item>> dyedItemTags = ImmutableMap.<DyeColor, TagKey<Item>>builder()
+      .put(DyeColor.BLACK, ConventionalItemTags.BLACK_DYED)
+      .put(DyeColor.BLUE, ConventionalItemTags.BLUE_DYED)
+      .put(DyeColor.BROWN, ConventionalItemTags.BROWN_DYED)
+      .put(DyeColor.CYAN, ConventionalItemTags.CYAN_DYED)
+      .put(DyeColor.GRAY, ConventionalItemTags.GRAY_DYED)
+      .put(DyeColor.GREEN, ConventionalItemTags.GREEN_DYED)
+      .put(DyeColor.LIGHT_BLUE, ConventionalItemTags.LIGHT_BLUE_DYED)
+      .put(DyeColor.LIGHT_GRAY, ConventionalItemTags.LIGHT_GRAY_DYED)
+      .put(DyeColor.LIME, ConventionalItemTags.LIME_DYED)
+      .put(DyeColor.MAGENTA, ConventionalItemTags.MAGENTA_DYED)
+      .put(DyeColor.ORANGE, ConventionalItemTags.ORANGE_DYED)
+      .put(DyeColor.PINK, ConventionalItemTags.PINK_DYED)
+      .put(DyeColor.PURPLE, ConventionalItemTags.PURPLE_DYED)
+      .put(DyeColor.RED, ConventionalItemTags.RED_DYED)
+      .put(DyeColor.WHITE, ConventionalItemTags.WHITE_DYED)
+      .put(DyeColor.YELLOW, ConventionalItemTags.YELLOW_DYED)
+      .build();
+  private final MishangucBlockTagProvider blockTagProvider;
+
+  public MishangucItemTagProvider(FabricPackOutput output, CompletableFuture<HolderLookup.Provider> completableFuture, MishangucBlockTagProvider blockTagProvider) {
+    super(output, completableFuture, blockTagProvider);
+    this.blockTagProvider = blockTagProvider;
+  }
+
+  protected MishangucTagBuilder<Item> getMishangucTagBuilder(TagKey<Item> tag) {
+    return new MishangucTagBuilder<>(tag, builder(tag), item -> BuiltInRegistries.ITEM.getResourceKey(item).orElseThrow());
+  }
+
+  protected void tools() {
+    itemTag(ItemTags.PICKAXES).add(MishangucItems.OMNIPOTENT_TOOL);
+    itemTag(ItemTags.AXES).add(MishangucItems.OMNIPOTENT_TOOL);
+    itemTag(ItemTags.SHOVELS).add(MishangucItems.OMNIPOTENT_TOOL);
+    itemTag(ItemTags.HOES).add(MishangucItems.OMNIPOTENT_TOOL);
+    itemTag(ItemTags.SWORDS).add(MishangucItems.OMNIPOTENT_TOOL);
+
+    itemTag(ItemTags.DURABILITY_ENCHANTABLE).add(MishangucItems.ROTATING_TOOL, MishangucItems.MIRRORING_TOOL, MishangucItems.SLAB_TOOL, MishangucItems.TEXT_COPY_TOOL, MishangucItems.EXPLOSION_TOOL, MishangucItems.COLOR_TOOL, MishangucItems.ROAD_TOOL, MishangucItems.TP_TOOL, MishangucItems.GROWTH_TOOL, MishangucItems.ICE_SNOW_TOOL);
+  }
+
+  protected void handrailItems() {
+    final var simpleConcreteHandrailItems = itemTag("simple_concrete_handrails");
+    final var simpleTerracottaHandrailItems = itemTag("simple_terracotta_handrails");
+    final var simpleStainedGlassHandrailItems = itemTag("simple_stained_glass_handrails");
+    final var simpleWoodenHandrailItems = itemTag("simple_wooden_handrails");
+    final var simpleHandrailItems = itemTag("simple_handrails")
+        .addTag(simpleConcreteHandrailItems, simpleTerracottaHandrailItems, simpleStainedGlassHandrailItems, simpleWoodenHandrailItems);
+
+    final var glassHandrailItems = itemTag("glass_handrails");
+    final var handrailItems = itemTag("handrails")
+        .addTag(simpleStainedGlassHandrailItems)
+        .addTag(simpleTerracottaHandrailItems)
+        .addTag(simpleConcreteHandrailItems)
+        .addTag(simpleWoodenHandrailItems)
+        .addTag(glassHandrailItems);
+
+    MishangUtils.instanceEntryStream(HandrailBlocks.class, Block.class).forEach(entry -> {
+      final Field field = entry.getKey();
+      final Block block = entry.getValue();
+      if (block instanceof final SimpleHandrailBlock simpleHandrailBlock) {
+        if (MishangUtils.isStained_glass(simpleHandrailBlock.baseBlock)) {
+          simpleStainedGlassHandrailItems.add(simpleHandrailBlock.asItem());
+        } else if (isConcrete(simpleHandrailBlock.baseBlock)) {
+          simpleConcreteHandrailItems.add(simpleHandrailBlock.asItem());
+        } else if (isTerracotta(simpleHandrailBlock.baseBlock)) {
+          simpleTerracottaHandrailItems.add(simpleHandrailBlock.asItem());
+        } else if (isWood(simpleHandrailBlock.baseBlock) || isPlanks(simpleHandrailBlock.baseBlock)) {
+          simpleWoodenHandrailItems.add(simpleHandrailBlock.asItem());
+        } else {
+          simpleHandrailItems.add(simpleHandrailBlock.asItem());
+        }
+      } else if (block instanceof GlassHandrailBlock glassHandrailBlock) {
+        glassHandrailItems.add(glassHandrailBlock.asItem());
+      }
+    });
+  }
+
+  protected void coloredItems() {
+    blockTagProvider.coloredItems.asMap().forEach((dyeColor, items) -> {
+      final MishangucTagBuilder<Item> builder = getMishangucTagBuilder(dyedItemTags.get(dyeColor));
+      items.forEach(builder::add);
+    });
+  }
+
+  protected void sulfurCubeArchetypes() {
+    itemTag(ItemTags.SULFUR_CUBE_ARCHETYPE_BOUNCY).add(ColoredBlocks.COLORED_PLANKS.asItem());
+
+    itemTag(ItemTags.SULFUR_CUBE_ARCHETYPE_SLOW_FLAT).add(ColoredBlocks.COLORED_IRON_BLOCK.asItem());
+
+    itemTag(ItemTags.SULFUR_CUBE_ARCHETYPE_REGULAR).add(ColoredBlocks.COLORED_DIRT.asItem(), LightBlocks.WHITE_LIGHT.asItem(), LightBlocks.YELLOW_LIGHT.asItem(), LightBlocks.ORANGE_LIGHT.asItem(), LightBlocks.GREEN_LIGHT.asItem(), LightBlocks.CYAN_LIGHT.asItem(), LightBlocks.PINK_LIGHT.asItem(), ColoredBlocks.COLORED_LIGHT.asItem(), ColoredBlocks.COLORED_PURE_BLOCK.asItem(), ColoredBlocks.COLORED_PURE_BLOCK_WITHOUT_SHADE.asItem(), ColoredBlocks.COLORED_PURE_LIGHT.asItem(), ColoredBlocks.COLORED_PURE_LIGHT_WITHOUT_SHADE.asItem());
+
+    itemTag(ItemTags.SULFUR_CUBE_ARCHETYPE_LIGHT).add(ColoredBlocks.COLORED_WOOL.asItem());
+
+    itemTag(ItemTags.SULFUR_CUBE_ARCHETYPE_FAST_SLIDING).add(ColoredBlocks.COLORED_SNOW_BLOCK.asItem(), ColoredBlocks.COLORED_PACKED_ICE.asItem());
+
+    itemTag(ItemTags.SULFUR_CUBE_ARCHETYPE_SLOW_BOUNCY).add(ColoredBlocks.COLORED_TERRACOTTA.asItem(), ColoredBlocks.COLORED_CONCRETE.asItem(), ColoredBlocks.COLORED_COBBLESTONE.asItem(), ColoredBlocks.COLORED_ANDESITE.asItem(), ColoredBlocks.COLORED_DIORITE.asItem(), ColoredBlocks.COLORED_CALCITE.asItem(), ColoredBlocks.COLORED_TUFF.asItem(), ColoredBlocks.COLORED_STONE.asItem(), ColoredBlocks.COLORED_STONE_BRICKS.asItem(), ColoredBlocks.COLORED_BRICKS.asItem(), ColoredBlocks.COLORED_QUARTZ_BLOCK.asItem(), ColoredBlocks.COLORED_CHISELED_QUARTZ_BLOCK.asItem(), ColoredBlocks.COLORED_QUARTZ_BRICKS.asItem(), ColoredBlocks.COLORED_SMOOTH_QUARTZ.asItem(), ColoredBlocks.COLORED_QUARTZ_PILLAR.asItem(), ColoredBlocks.COLORED_PURPUR_BLOCK.asItem(), ColoredBlocks.COLORED_PURPUR_PILLAR.asItem(), ColoredBlocks.COLORED_END_STONE.asItem(), ColoredBlocks.COLORED_END_STONE_BRICKS.asItem()).addTag(TagKey.create(Registries.ITEM, Mishanguc.id("road_blocks")));
+  }
+
+  @Override
+  protected void addTags(HolderLookup.Provider lookup) {
+    tools();
+    handrailItems();
+    coloredItems();
+    sulfurCubeArchetypes();
+    blockTagProvider.blockTagsWithItem.forEach(this::copy);
+    final MishangucTagBuilder<Item> colored = itemTag("colored"); // 因为涉及染色栏杆的要特殊处理，所以这里先这样。
+    MishangUtils.blocks().stream().filter(Predicates.instanceOf(ColoredBlock.class)).map(Block::asItem).distinct().forEach(colored::add);
+
+
+    itemTag("omnipotent_repair_items").add(Items.BEDROCK);
+    itemTag("road_materials").add(Items.CONCRETE.white(), Items.CONCRETE.gray(), Items.CONCRETE.lightGray(), Items.CONCRETE.black());
+  }
+
+  protected MishangucTagBuilder<Item> itemTag(TagKey<Item> tagKey) {
+    return getMishangucTagBuilder(tagKey);
+  }
+
+  protected MishangucTagBuilder<Item> itemTag(String path) {
+    return getMishangucTagBuilder(TagKey.create(Registries.ITEM, Mishanguc.id(path)));
+  }
+}

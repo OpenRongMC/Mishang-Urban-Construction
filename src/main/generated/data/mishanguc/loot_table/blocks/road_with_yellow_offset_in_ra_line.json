@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "mishanguc:road_with_yellow_offset_in_ra_line"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

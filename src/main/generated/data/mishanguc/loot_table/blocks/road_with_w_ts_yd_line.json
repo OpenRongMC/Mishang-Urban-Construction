@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "mishanguc:road_with_w_ts_yd_line"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}

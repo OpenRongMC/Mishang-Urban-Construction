@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:block",
+  "modifier": {
+    "type": "minecraft:copy_components",
+    "include": [
+      "mishanguc:color"
+    ],
+    "source": "block_entity"
+  },
+  "pools": [
+    {
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      },
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "mishanguc:glowing_colored_decorated_gold_handrail"
+        }
+      ],
+      "rolls": 1
+    }
+  ]
+}
