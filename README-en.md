@@ -2,37 +2,48 @@
 
 [简体中文](./README.md) · English
 
-An urban-building mod with paintable or marked roads, signs, lights, handrails and construction tools. This port adapts client renderer registration for the 26.3 runtime.
 
-## Download and installation
+Mishang Urban Construction is a building and decoration mod that provides a variety of useful blocks, including:
 
-- Version · [v1.6.7-beta.3-rongmc.1+mc26.3](https://github.com/OpenRongMC/Mishang-Urban-Construction/releases/tag/v1.6.7-beta.3-rongmc.1%2Bmc26.3) (Prerelease)
-- Release asset · `rongmc-mishanguc-1.6.7-beta.3-rongmc.1.mc26.3.jar`
-- Runtime · Minecraft Java 26.3, Fabric, Java 25
-- Fabric mod ID · `rongmc_mishanguc`
-- Dependencies declared by the JAR · [Fabric API](https://modrinth.com/mod/fabric-api)
+- Road blocks: lines can be painted on them to make them look realistic. The road lines have various combinations and can be generated automatically in some situations.
+- Road marks: simple road markings, such as guide arrows; can be placed on roads and road slabs.
+- Lights: available in various shapes and colors, including white, yellow, orange, cyan, green, and pink. There are full light blocks as well as decorations that can be placed on walls, floors, or ceilings.
+- Sign blocks: available in different styles. Compared with vanilla signs, signs in this mod allow parameters such as color, size, and position to be adjusted flexibly. Sign presets can be managed via the `/mishanguc:signpreset` command.
+- Handrail blocks: available with various textures, appearances, and connection methods, and can be placed on stairs.
+- Custom-colored blocks: allow any color to be specified instead of being limited to the 16 colors available for concrete and wool.
 
-Place the release JAR in the instance’s `mods/` directory. Install the same build on both sides. Add the matching OcelotSign release for mainland Chinese traffic signs and posts. Beta builds can be found among the prereleases.
+Moreover, the mod contains a series of useful tools, such as:
 
-## How to try it
+- Fast Building Tool: quickly places multiple blocks on a plane.
+- Column Building Tool: quickly places multiple blocks in a column.
+- Force Placing Tool: places blocks while ignoring placement restrictions and block updates.
+- Teleportation Tool: teleports you to any location.
+- ID Checking Tool, Block State Tool, and Data Tag Tool: query the properties or NBT of a block or entity, or query the current biome.
+- Explosion Tool: creates an explosion when clicked.
+- Rotating or Mirroring Tool: rotates or flips a block when clicked.
+- Color Tool: obtains and modifies block colors; only some blocks support custom coloring.
+- Text Copy Tool: copies and pastes text on signs, including vanilla signs.
+- Growth Tool: makes creatures and crops grow or regress. When holding a golden dandelion in the offhand, it can also freeze or unfreeze a creature's age (version 26.1 and above).
+- Carrying Tool: picks up a block or entity and carries it to another location.
+- Road Tool: quickly adds or removes road markings.
+- ……
 
-Lay a short road with markings at different orientations and edit a sign. Boot a dedicated server and check login and rendering of existing blocks.
+For detailed information about this mod, see [GitHub](https://github.com/SolidBlock-cn/mishanguc/wiki) or [MC模组百科](https://www.mcmod.cn/class/5743.html).
 
-## Working from source
+## What changed in the RongMC 26.3 port
 
-```sh
-./gradlew tasks
-```
+RongMC moves block-entity renderer registration to the client entry point so dedicated servers can load roads, signs and other content. Building tools and decorative blocks retain their existing gameplay.
 
-Inspect the tasks available in this checkout with Java 25 before selecting a build task.
+## Installation
 
-## Documentation and support
+Download **v1.6.7-beta.3-rongmc.1+mc26.3** from [GitHub Releases](https://github.com/OpenRongMC/Mishang-Urban-Construction/releases/tag/v1.6.7-beta.3-rongmc.1%2Bmc26.3) for Minecraft Java **26.3** on **Fabric** with **Java 25**. Dependencies include [Fabric API](https://modrinth.com/mod/fabric-api). Place the release JAR in the instance’s `mods/` directory. Install the same build on both sides. Add the matching OcelotSign release for mainland Chinese traffic signs and posts. Beta builds can be found among the prereleases.
 
-- [Previous README (historical guide, contributors and credits)](https://github.com/OpenRongMC/Mishang-Urban-Construction/blob/3bdeedd07a9a60b60992678e4c419f666ca01d69/README-en.md)
-- [Upstream project and documentation](https://github.com/SolidBlock-cn/mishanguc)
-- [OcelotSign](https://github.com/OpenRongMC/OcelotSign)
-- [Report a RongMC port issue](https://github.com/OpenRongMC/Mishang-Urban-Construction/issues) · Include the game version, client and server JAR names, reproduction steps and relevant logs.
+This mod **depends on Fabric API** and, since version 1.4.0, **no longer** depends on the [BRRP](https://github.com/SolidBlock-cn/BRRP) (Better Runtime Resource Pack) mod.
 
-## License and credits
+Only a Fabric version is available; there is no Forge or NeoForge version of this mod.
 
-See this repository’s [LICENSE](./LICENSE) and the original project’s license, credits and third-party asset notices.
+Please also refer to [the update log](UpdateLog-en.md).
+
+This mod is published under the LGPLv3 license, which you must follow when propagating this mod.
+
+You are welcome to join the Tencent QQ group **587928350** for discussion. You can also report issues on GitHub.
